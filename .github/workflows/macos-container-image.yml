@@ -1,7 +1,7 @@
 name: Pull And Save Container Image
 
 on:
-  push:
+  push: main
   workflow_dispatch:
     inputs:
       image_to_sync:
@@ -39,7 +39,7 @@ jobs:
         id: extract_name_tag
         run: |
           IMAGE_WITH_TAG=${{ steps.set_image_name.outputs.IMAGE_TO_SYNC }}
-          IFS=':' read -r IMAGE NAME TAG <<< "$IMAGE_WITH_TAG"
+          IFS=':' read -r NAME TAG <<< "$IMAGE_WITH_TAG"
           if [[ -z "$TAG" ]]; then
             TAG="latest"
           fi
