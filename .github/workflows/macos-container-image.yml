@@ -34,7 +34,7 @@ jobs:
           echo "IMAGE_TO_SYNC=$IMAGE_TO_SYNC" >> $GITHUB_OUTPUT
 
       - name: Pull image from docker.io
-        run: docker pull ${{ steps.set_image_name.outputs.IMAGE_TO_SYNC }}
+        run: docker pull --platform linux/arm64 ${{ steps.set_image_name.outputs.IMAGE_TO_SYNC }}
 
       - name: Extract image name and tag
         id: extract_name_tag
