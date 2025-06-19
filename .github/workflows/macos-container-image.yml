@@ -12,7 +12,7 @@ on:
 
 jobs:
   sync_image:
-    runs-on: macos-latest
+    runs-on: macos-13
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
