@@ -1,7 +1,8 @@
 name: Pull And Save Container Image
 
 on:
-  push: main
+  push:
+    branches: [ "main" ]
   workflow_dispatch:
     inputs:
       image_to_sync:
