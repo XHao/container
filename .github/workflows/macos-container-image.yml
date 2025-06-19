@@ -50,11 +50,10 @@ jobs:
       - name: Tag image for GHCR
         run: |
           IMAGE_TO_SYNC=${{ steps.set_image_name.outputs.IMAGE_TO_SYNC }}
-          IMAGE_NAME=$(echo "${{ steps.extract_name_tag.outputs.IMAGE_NAME }}" | tr '[:upper:]' '[:lower:]')
-          IMAGE_TAG=${{ steps.extract_name_tag.outputs.IMAGE_TAG }}
-          REPOSITORY_NAME_LOWER=$(echo "${{ github.event.repository.name }}" | tr '[:upper:]' '[:lower:]')
-          docker tag "$IMAGE_TO_SYNC" "ghcr.io/${{ github.repository_owner }}/${REPOSITORY_NAME_LOWER}/${IMAGE_NAME}:${IMAGE_TAG}"
+          REPOSITORY_OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          docker tag "$IMAGE_TO_SYNC" "ghcr.io/${REPOSITORY_OWNER_LOWER}/${{ github.event.repository.name }}/${{ steps.extract_name_tag.outputs.IMAGE_NAME }}:${{ steps.extract_name_tag.outputs.IMAGE_TAG }}
 
       - name: Push image to GHCR
         run: |
-          docker push ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ steps.extract_name_tag.outputs.IMAGE_NAME }}:${{ steps.extract_name_tag.outputs.IMAGE_TAG }}
+          REPOSITORY_OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          docker push ghcr.io/${REPOSITORY_OWNER_LOWER}/${{ github.event.repository.name }}/${{ steps.extract_name_tag.outputs.IMAGE_NAME }}:${{ steps.extract_name_tag.outputs.IMAGE_TAG }}
