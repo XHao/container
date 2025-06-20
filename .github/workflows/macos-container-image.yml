@@ -3,6 +3,8 @@ name: Pull And Save Container Image
 on:
   push:
     branches: [ "main" ]
+    paths-ignore:
+      - 'README.md'
   workflow_dispatch:
     inputs:
       image_to_sync:
