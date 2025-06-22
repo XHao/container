@@ -40,11 +40,24 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set image and platform variables
+        id: set_vars
+        run: |
+          # Set defaults for push event
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            IMAGE_TO_SYNC="ubuntu:latest"
+            PLATFORM="linux/arm64"
+          else
+            IMAGE_TO_SYNC="${{ github.event.inputs.image_to_sync }}"
+            PLATFORM="${{ github.event.inputs.platform }}"
+          fi
+          echo "IMAGE_TO_SYNC=$IMAGE_TO_SYNC" >> $GITHUB_ENV
+          echo "PLATFORM=$PLATFORM" >> $GITHUB_ENV
+
       - name: Extract image name and tag
         id: extract_name_tag
         run: |
-          IMAGE_WITH_TAG=${{ github.event.inputs.image_to_sync }}
-          IFS=':' read -r NAME TAG <<< "$IMAGE_WITH_TAG"
+          IFS=':' read -r NAME TAG <<< "$IMAGE_TO_SYNC"
           if [[ -z "$TAG" ]]; then
             TAG="latest"
           fi
@@ -57,18 +70,18 @@ jobs:
           REPOSITORY_OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           
           # Pull the image with specified platform
-          docker pull --platform ${{ github.event.inputs.platform }} ${{ github.event.inputs.image_to_sync }}
+          docker pull --platform "$PLATFORM" "$IMAGE_TO_SYNC"
           
           # Tag for GHCR
-          docker tag "${{ github.event.inputs.image_to_sync }}" \
+          docker tag "$IMAGE_TO_SYNC" \
             "ghcr.io/${REPOSITORY_OWNER_LOWER}/${{ github.event.repository.name }}/${{ steps.extract_name_tag.outputs.IMAGE_NAME }}:${{ steps.extract_name_tag.outputs.IMAGE_TAG }}"
           
             # Add platform suffix to tag to avoid name conflicts
-            PLATFORM_SUFFIX=$(echo "${{ github.event.inputs.platform }}" | tr '/' '-')
+            PLATFORM_SUFFIX=$(echo "$PLATFORM" | tr '/' '-')
             TARGET_IMAGE="ghcr.io/${REPOSITORY_OWNER_LOWER}/${{ github.event.repository.name }}/${{ steps.extract_name_tag.outputs.IMAGE_NAME }}-${PLATFORM_SUFFIX}:${{ steps.extract_name_tag.outputs.IMAGE_TAG }}"
 
             # Tag for GHCR with platform suffix
-            docker tag "${{ github.event.inputs.image_to_sync }}" "$TARGET_IMAGE"
+            docker tag "$IMAGE_TO_SYNC" "$TARGET_IMAGE"
 
             # Push to GHCR
             docker push "$TARGET_IMAGE"
