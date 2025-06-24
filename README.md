@@ -33,6 +33,6 @@ The main goal of this project is to make popular container images easily accessi
 
 - Designed for macOS users, especially those using the `container` command
 - Requires the repository's `GITHUB_TOKEN` (enabled by default)
-- The workflow runs on `macos-13`
+- The workflow runs on `ubuntu-latest`
 - Only public images are supported for syncing
 - The image tag will always be converted to lowercase when syncing to GHCR
