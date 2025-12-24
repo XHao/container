@@ -52,17 +52,32 @@ jobs:
             IMAGE_TO_SYNC="${{ github.event.inputs.image_to_sync }}"
             PLATFORM="${{ github.event.inputs.platform }}"
           fi
+
+          # Docker Hub no longer publishes `centos:latest`. Map it to a valid CentOS Stream image.
+          if [[ "$IMAGE_TO_SYNC" == "centos" || "$IMAGE_TO_SYNC" == "centos:latest" ]]; then
+            echo "::warning::'centos:latest' is not available on Docker Hub; using 'quay.io/centos/centos:stream9' instead."
+            IMAGE_TO_SYNC="quay.io/centos/centos:stream9"
+          fi
           echo "IMAGE_TO_SYNC=$IMAGE_TO_SYNC" >> $GITHUB_ENV
           echo "PLATFORM=$PLATFORM" >> $GITHUB_ENV
 
       - name: Extract image name and tag
         id: extract_name_tag
         run: |
-          IFS=':' read -r NAME TAG <<< "$IMAGE_TO_SYNC"
-          if [[ -z "$TAG" ]]; then
+          REF="$IMAGE_TO_SYNC"
+          if [[ "$REF" == *":"* ]]; then
+            NAME_WITH_REGISTRY="${REF%:*}"
+            TAG="${REF##*:}"
+          else
+            NAME_WITH_REGISTRY="$REF"
             TAG="latest"
           fi
-          echo "IMAGE_NAME=$NAME" >> $GITHUB_OUTPUT
+
+          # Use the last path segment for GHCR naming (avoid slashes from registry/namespace).
+          IMAGE_SLUG="${NAME_WITH_REGISTRY##*/}"
+
+          echo "IMAGE_NAME=$NAME_WITH_REGISTRY" >> $GITHUB_OUTPUT
+          echo "IMAGE_SLUG=$IMAGE_SLUG" >> $GITHUB_OUTPUT
           echo "IMAGE_TAG=$TAG" >> $GITHUB_OUTPUT
 
       - name: Pull and push image
@@ -75,11 +90,11 @@ jobs:
           
           # Tag for GHCR
           docker tag "$IMAGE_TO_SYNC" \
-            "ghcr.io/${REPOSITORY_OWNER_LOWER}/${{ github.event.repository.name }}/${{ steps.extract_name_tag.outputs.IMAGE_NAME }}:${{ steps.extract_name_tag.outputs.IMAGE_TAG }}"
+            "ghcr.io/${REPOSITORY_OWNER_LOWER}/${{ github.event.repository.name }}/${{ steps.extract_name_tag.outputs.IMAGE_SLUG }}:${{ steps.extract_name_tag.outputs.IMAGE_TAG }}"
           
             # Add platform suffix to tag to avoid name conflicts
             PLATFORM_SUFFIX=$(echo "$PLATFORM" | tr '/' '-')
-            TARGET_IMAGE="ghcr.io/${REPOSITORY_OWNER_LOWER}/${{ github.event.repository.name }}/${{ steps.extract_name_tag.outputs.IMAGE_NAME }}-${PLATFORM_SUFFIX}:${{ steps.extract_name_tag.outputs.IMAGE_TAG }}"
+            TARGET_IMAGE="ghcr.io/${REPOSITORY_OWNER_LOWER}/${{ github.event.repository.name }}/${{ steps.extract_name_tag.outputs.IMAGE_SLUG }}-${PLATFORM_SUFFIX}:${{ steps.extract_name_tag.outputs.IMAGE_TAG }}"
 
             # Tag for GHCR with platform suffix
             docker tag "$IMAGE_TO_SYNC" "$TARGET_IMAGE"
