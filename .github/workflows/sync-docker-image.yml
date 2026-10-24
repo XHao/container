@@ -1,39 +1,77 @@
 name: Sync Docker Image
 
 on:
+  schedule:
+    - cron: '0 0 1 * *' # monthly, 1st at 00:00 UTC
   push:
     branches: [ "main" ]
-    paths-ignore:
-      - 'README.md'
-      - 'dev/**'
+    paths:
+      - 'images.txt'
+      - '.github/workflows/sync-docker-image.yml'
   workflow_dispatch:
     inputs:
       image_to_sync:
-        description: 'Docker image to sync (e.g., ubuntu:latest)'
-        required: true
-        default: 'ubuntu:latest'
+        description: 'Optional: single image to sync (e.g., alpine:latest). Empty = sync all of images.txt'
+        required: false
+        default: ''
       platform:
-        description: 'Target platform architecture'
-        required: true
+        description: 'Platform for single-image sync (ignored when syncing images.txt)'
+        required: false
         type: choice
-        default: 'linux/amd64'
+        default: 'linux/arm64'
         options:
-          - 'linux/amd64'
           - 'linux/arm64'
+          - 'linux/amd64'
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: sync-docker-image
+  cancel-in-progress: false
 
 jobs:
-  sync_image:
+  prepare:
     runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+      - name: Build sync matrix
+        id: set-matrix
+        env:
+          SINGLE_IMAGE: ${{ github.event.inputs.image_to_sync }}
+          SINGLE_PLATFORM: ${{ github.event.inputs.platform }}
+        run: |
+          if [ -n "$SINGLE_IMAGE" ]; then
+            IMAGES="$SINGLE_IMAGE"
+            PLATFORMS="$SINGLE_PLATFORM"
+          else
+            IMAGES=$(grep -vE '^[[:space:]]*(#|$)' images.txt)
+            PLATFORMS="linux/amd64 linux/arm64"
+          fi
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+          rows=""
+          while IFS= read -r img; do
+            for p in $PLATFORMS; do
+              rows="$rows{\"image\":\"$img\",\"platform\":\"$p\"},"
+            done
+          done <<< "$IMAGES"
 
+          MATRIX="[${rows%,}]"
+          echo "$MATRIX" | jq -e . > /dev/null # sanity-check the JSON
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+
+  sync_image:
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    steps:
       - name: Login to GHCR
         uses: docker/login-action@v3
         with:
@@ -41,63 +79,48 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set image and platform variables
-        id: set_vars
+      - name: Pull and push image
+        env:
+          IMAGE: ${{ matrix.image }}
+          PLATFORM: ${{ matrix.platform }}
         run: |
-          # Set defaults for push event
-          if [[ "${{ github.event_name }}" == "push" ]]; then
-            IMAGE_TO_SYNC="ubuntu:latest"
-            PLATFORM="linux/arm64"
-          else
-            IMAGE_TO_SYNC="${{ github.event.inputs.image_to_sync }}"
-            PLATFORM="${{ github.event.inputs.platform }}"
-          fi
+          set -euo pipefail
+          REF="$IMAGE"
 
           # Docker Hub no longer publishes `centos:latest`. Map it to a valid CentOS Stream image.
-          if [[ "$IMAGE_TO_SYNC" == "centos" || "$IMAGE_TO_SYNC" == "centos:latest" ]]; then
+          if [[ "$REF" == "centos" || "$REF" == "centos:latest" ]]; then
             echo "::warning::'centos:latest' is not available on Docker Hub; using 'quay.io/centos/centos:stream9' instead."
-            IMAGE_TO_SYNC="quay.io/centos/centos:stream9"
+            REF="quay.io/centos/centos:stream9"
           fi
-          echo "IMAGE_TO_SYNC=$IMAGE_TO_SYNC" >> $GITHUB_ENV
-          echo "PLATFORM=$PLATFORM" >> $GITHUB_ENV
 
-      - name: Extract image name and tag
-        id: extract_name_tag
-        run: |
-          REF="$IMAGE_TO_SYNC"
-          if [[ "$REF" == *":"* ]]; then
-            NAME_WITH_REGISTRY="${REF%:*}"
-            TAG="${REF##*:}"
+          # Parse the reference: a ':' only counts as a tag separator when it
+          # comes after the last '/' (otherwise it is a registry port). Digest
+          # refs (name@sha256:...) are handled first.
+          if [[ "$REF" == *"@"* ]]; then
+            NAME="${REF%%@*}"
+            TAG="${REF##*@}"
           else
-            NAME_WITH_REGISTRY="$REF"
-            TAG="latest"
+            SEGMENT="${REF##*/}"
+            if [[ "$SEGMENT" == *":"* ]]; then
+              NAME="${REF%:*}"
+              TAG="${SEGMENT##*:}"
+            else
+              NAME="$REF"
+              TAG="latest"
+            fi
           fi
+          # GHCR tags cannot contain ':' (digest refs) and must be lowercase.
+          TAG=$(echo "${TAG/:/-}" | tr '[:upper:]' '[:lower:]')
 
-          # Use the last path segment for GHCR naming (avoid slashes from registry/namespace).
-          IMAGE_SLUG="${NAME_WITH_REGISTRY##*/}"
+          # GHCR requires lowercase image names.
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          REPO=$(echo "${{ github.event.repository.name }}" | tr '[:upper:]' '[:lower:]')
+          SLUG=$(echo "${NAME##*/}" | tr '[:upper:]' '[:lower:]')
+          PLATFORM_SUFFIX=$(echo "$PLATFORM" | tr '/' '-')
+          TARGET="ghcr.io/${OWNER}/${REPO}/${SLUG}-${PLATFORM_SUFFIX}:${TAG}"
 
-          echo "IMAGE_NAME=$NAME_WITH_REGISTRY" >> $GITHUB_OUTPUT
-          echo "IMAGE_SLUG=$IMAGE_SLUG" >> $GITHUB_OUTPUT
-          echo "IMAGE_TAG=$TAG" >> $GITHUB_OUTPUT
+          docker pull --platform "$PLATFORM" "$REF"
+          docker tag "$REF" "$TARGET"
+          docker push "$TARGET"
 
-      - name: Pull and push image
-        run: |
-          # Convert repository owner to lowercase for GHCR compatibility
-          REPOSITORY_OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          
-          # Pull the image with specified platform
-          docker pull --platform "$PLATFORM" "$IMAGE_TO_SYNC"
-          
-          # Tag for GHCR
-          docker tag "$IMAGE_TO_SYNC" \
-            "ghcr.io/${REPOSITORY_OWNER_LOWER}/${{ github.event.repository.name }}/${{ steps.extract_name_tag.outputs.IMAGE_SLUG }}:${{ steps.extract_name_tag.outputs.IMAGE_TAG }}"
-          
-            # Add platform suffix to tag to avoid name conflicts
-            PLATFORM_SUFFIX=$(echo "$PLATFORM" | tr '/' '-')
-            TARGET_IMAGE="ghcr.io/${REPOSITORY_OWNER_LOWER}/${{ github.event.repository.name }}/${{ steps.extract_name_tag.outputs.IMAGE_SLUG }}-${PLATFORM_SUFFIX}:${{ steps.extract_name_tag.outputs.IMAGE_TAG }}"
-
-            # Tag for GHCR with platform suffix
-            docker tag "$IMAGE_TO_SYNC" "$TARGET_IMAGE"
-
-            # Push to GHCR
-            docker push "$TARGET_IMAGE"
+          echo "## Synced \`${TARGET}\`" >> "$GITHUB_STEP_SUMMARY"
