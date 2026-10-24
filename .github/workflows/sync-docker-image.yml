@@ -61,8 +61,9 @@ jobs:
             done
           done <<< "$IMAGES"
 
-          MATRIX="[${rows%,}]"
-          echo "$MATRIX" | jq -e . > /dev/null # sanity-check the JSON
+          # strategy.matrix must be an object, not a bare array
+          MATRIX="{\"include\":[${rows%,}]}"
+          echo "$MATRIX" | jq -e '.include | length' > /dev/null # sanity-check the JSON
           echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
 
   sync_image:
