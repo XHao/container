@@ -48,7 +48,7 @@ RUN if [ "$TARGETARCH" = "arm64" ]; then \
         net-tools \
         zsh \
         sudo \
-        fonts-powerline \
+        tmux \
         openssh-server \
         git \
         python3 python3-pip \
@@ -71,24 +71,78 @@ ENV PATH=/usr/local/go/bin:$PATH
 RUN echo 'export PATH=/usr/local/go/bin:$PATH' >> /root/.zshenv && \
     echo 'export PATH=/usr/local/go/bin:$PATH' >> /root/.bashrc
 
-RUN pip install --break-system-packages powerline-shell && \
-    chsh -s /bin/zsh root
+RUN chsh -s /bin/zsh root
 
-RUN cat >> /root/.zshrc <<'EOF'
-function _update_ps1() {
-    PS1=$(powerline-shell $? --shell zsh)
-}
-if [[ $TERM != linux && -t 1 ]]; then
-  precmd () { _update_ps1; }
-fi
+# Dracula tmux theme from our fork (carries the weather icon fix).
+# Overridable for local builds on networks where github HTTPS is blocked.
+ARG DRACULA_REPO=https://github.com/XHao/tmux.git
+RUN git clone --depth 1 "$DRACULA_REPO" /root/.tmux/dracula && \
+    rm -rf /root/.tmux/dracula/.git
+
+RUN cat > /root/.tmux.conf <<'EOF'
+# Slim port of ~/dotfiles/.tmux.conf — drops macOS clipboard (pbcopy),
+# AI popups (need dotfiles scripts), and the battery segment (no battery).
+# Prefix stays Ctrl-b; Nerd Font glyphs render on the client terminal.
+
+# ---- basics ----
+set -g mouse on
+set -s escape-time 0
+set -g history-limit 50000
+set -g base-index 1
+setw -g pane-base-index 1
+set -g renumber-windows on
+set -g set-titles on
+set -g set-titles-string '#S:#I:#W - "#T" #{session_alerts}'
+
+# ---- colors: truecolor passthrough ----
+set -g default-terminal "screen-256color"
+set -ga terminal-overrides ",*:Tc"
+
+# ---- splits & panes ----
+bind | split-window -h -c "#{pane_current_path}"
+bind - split-window -v -c "#{pane_current_path}"
+bind h select-pane -L
+bind j select-pane -D
+bind k select-pane -U
+bind l select-pane -R
+
+# ---- copy mode (vi); copies stay in the tmux buffer, prefix ] pastes ----
+setw -g mode-keys vi
+bind -T copy-mode-vi v send -X begin-selection
+bind -T copy-mode-vi y send -X copy-pipe-and-cancel
+bind -T copy-mode-vi MouseDragEnd1Pane send -X copy-pipe-and-cancel
+
+# ---- sync input / reload ----
+bind S setw synchronize-panes \; display "同步输入: #{?pane_synchronized,ON ⚠️,OFF}"
+bind r source-file ~/.tmux.conf \; display "已重载 ~/.tmux.conf"
+
+# ---- Dracula status bar: cpu/ram/weather/time, Everforest palette ----
+set -g status-interval 5
+set -g @dracula-show-powerline true
+set -g @dracula-show-left-icon session
+set -g @dracula-plugins "cpu-usage ram-usage weather time"
+set -g @dracula-colors "white=#d3c6aa gray=#3a464c dark_gray=#333c43 light_purple=#83c092 dark_purple=#4d5960 cyan=#7fbbb3 green=#a7c080 orange=#e69875 red=#e67e80 purple=#d699b6 pink=#d699b6 yellow=#dbbc7f"
+set -g @dracula-show-fahrenheit false
+set -g @dracula-show-location true
+set -g @dracula-show-timezone false
+set -g @dracula-fixed-location "Shanghai"
+run-shell ~/.tmux/dracula/dracula.tmux
+
+# ---- pane/message colors (Everforest, same palette as @dracula-colors) ----
+set -g pane-border-style "fg=#3a464c"
+set -g pane-active-border-style "fg=#83c092"
+set -g message-style "bg=#3a464c,fg=#d3c6aa"
+setw -g mode-style "bg=#a7c080,fg=#333c43"
+
+# ---- machine-local hook ----
+if-shell '[ -f ~/.tmux.conf.local ]' 'source-file ~/.tmux.conf.local'
 EOF
 
-RUN cat >> /root/.bashrc <<'EOF'
-function _update_ps1() {
-    PS1="$(powerline-shell $? --shell bash)"
-}
-if [[ $TERM != linux && -t 1 ]]; then
-  PROMPT_COMMAND="_update_ps1${PROMPT_COMMAND:+;$PROMPT_COMMAND}"
+# SSH/interactive logins land in tmux (window close destroys the session);
+# same guard trio as dotfiles zshrc.d/05-tmux.zsh
+RUN cat >> /root/.zshrc <<'EOF'
+if [[ -o interactive && -z "${TMUX:-}" ]] && command -v tmux &>/dev/null; then
+    exec tmux new \; set-option destroy-unattached on
 fi
 EOF
 

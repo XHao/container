@@ -43,7 +43,7 @@ podman run -d --name dev -p 2222:22 \
 ssh -p 2222 root@localhost
 ```
 
-The image builds for both `linux/amd64` and `linux/arm64` on native runners (no QEMU), pinned to the versioned `ubuntu-linux-<arch>:26.04` mirror tag — moving to a new Ubuntu release means bumping that tag in `dev/Dockerfile` plus `images.txt` together. It ships zsh + powerline-shell, git, Go 1.27.3 (with `GOPROXY=https://goproxy.cn`), OpenJDK 25, Maven, Python 3, and an SSH server.
+The image builds for both `linux/amd64` and `linux/arm64` on native runners (no QEMU), pinned to the versioned `ubuntu-linux-<arch>:26.04` mirror tag — moving to a new Ubuntu release means bumping that tag in `dev/Dockerfile` plus `images.txt` together. It ships zsh + tmux with a Dracula status bar (SSH logins land in tmux automatically), git, Go 1.27.3 (with `GOPROXY=https://goproxy.cn`), OpenJDK 25, Maven, Python 3, and an SSH server.
 
 **Triggers**: changes under `dev/`, every successful sync run (so the dev image tracks the pinned base's point releases), or manual dispatch. The very first run after adding the versioned base tag can race ahead of the sync workflow and fail — the post-sync trigger self-heals it.
 
