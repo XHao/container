@@ -28,7 +28,7 @@ ghcr.io/<your-github-username>/container/ubuntu-linux-arm64:latest
 
 ## Dev Image (`dev/`)
 
-A single Dockerfile builds for both architectures (`TARGETARCH` auto-detected) on top of the mirrored Ubuntu image. It ships zsh + powerline-shell, git, Go 1.24.4 (with `GOPROXY=https://goproxy.cn`), OpenJDK 21, Maven, Python 3, and an SSH server.
+A single Dockerfile builds for both architectures (`TARGETARCH` auto-detected) on top of the mirrored Ubuntu image. It ships zsh + powerline-shell, git, Go 1.27.3 (with `GOPROXY=https://goproxy.cn`), OpenJDK 25, Maven, Python 3, and an SSH server.
 
 **No secret material is baked into the image**: there is no root password, and your SSH public key is mounted at runtime instead of being passed as a build arg.
 

@@ -14,24 +14,33 @@ ARG TARGETARCH
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Asia/Singapore
 
-# arm64 pulls from the Ubuntu ports archive: use the TUNA mirror
-# (amd64 keeps the default sources).
+# arm64 pulls from the Ubuntu ports archive: use the TUNA mirror with the
+# base image's release codename (ubuntu:latest may jump to a new LTS — never
+# hardcode it). Also drop the deb822 default sources to avoid stacking.
+# amd64 keeps the default sources.
+# The resolute base ships no ca-certificates: bootstrap them from the base's
+# default http sources first, or every https fetch below (TUNA, aliyun) fails
+# certificate verification.
 RUN if [ "$TARGETARCH" = "arm64" ]; then \
-        rm -f /etc/apt/sources.list && \
-        echo "deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/ noble main restricted universe multiverse" > /etc/apt/sources.list && \
-        echo "deb-src https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/ noble main restricted universe multiverse" >> /etc/apt/sources.list && \
-        echo "deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/ noble-updates main restricted universe multiverse" >> /etc/apt/sources.list && \
-        echo "deb-src https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/ noble-updates main restricted universe multiverse" >> /etc/apt/sources.list && \
-        echo "deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/ noble-backports main restricted universe multiverse" >> /etc/apt/sources.list && \
-        echo "deb-src https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/ noble-backports main restricted universe multiverse" >> /etc/apt/sources.list && \
-        echo "deb http://ports.ubuntu.com/ubuntu-ports/ noble-security main restricted universe multiverse" >> /etc/apt/sources.list && \
-        echo "deb-src http://ports.ubuntu.com/ubuntu-ports/ noble-security main restricted universe multiverse" >> /etc/apt/sources.list ; \
+        apt-get update && \
+        apt-get install -y --no-install-recommends ca-certificates && \
+        CODENAME=$(. /etc/os-release && echo "$VERSION_CODENAME") && \
+        rm -f /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources && \
+        { echo "deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/ $CODENAME main restricted universe multiverse"; \
+          echo "deb-src https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/ $CODENAME main restricted universe multiverse"; \
+          echo "deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/ $CODENAME-updates main restricted universe multiverse"; \
+          echo "deb-src https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/ $CODENAME-updates main restricted universe multiverse"; \
+          echo "deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/ $CODENAME-backports main restricted universe multiverse"; \
+          echo "deb-src https://mirrors.tuna.tsinghua.edu.cn/ubuntu-ports/ $CODENAME-backports main restricted universe multiverse"; \
+          echo "deb http://ports.ubuntu.com/ubuntu-ports/ $CODENAME-security main restricted universe multiverse"; \
+          echo "deb-src http://ports.ubuntu.com/ubuntu-ports/ $CODENAME-security main restricted universe multiverse"; } > /etc/apt/sources.list ; \
     fi && \
     ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && \
     echo $TZ > /etc/timezone && \
     apt-get update && \
     apt-get upgrade -y && \
     apt-get install -y \
+        ca-certificates \
         curl \
         wget \
         net-tools \
@@ -41,14 +50,14 @@ RUN if [ "$TARGETARCH" = "arm64" ]; then \
         openssh-server \
         git \
         python3 python3-pip \
-        openjdk-21-jdk maven && \
+        openjdk-25-jdk maven && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-RUN curl -OL https://mirrors.aliyun.com/golang/go1.24.4.linux-${TARGETARCH}.tar.gz && \
+RUN curl -OL https://mirrors.aliyun.com/golang/go1.27.3.linux-${TARGETARCH}.tar.gz && \
     rm -rf /usr/local/go && \
-    tar -C /usr/local -xzf go1.24.4.linux-${TARGETARCH}.tar.gz && \
-    rm -rf go1.24.4.linux-${TARGETARCH}.tar.gz && \
+    tar -C /usr/local -xzf go1.27.3.linux-${TARGETARCH}.tar.gz && \
+    rm -rf go1.27.3.linux-${TARGETARCH}.tar.gz && \
     /usr/local/go/bin/go env -w GO111MODULE=on && \
     /usr/local/go/bin/go env -w GOPROXY=https://goproxy.cn,direct
 
