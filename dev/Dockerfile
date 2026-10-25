@@ -7,7 +7,9 @@
 # amd64:     docker build --platform linux/amd64 -t dev ./dev
 # Run:       docker run -d -p 2222:22 -v ~/.ssh/id_ed25519.pub:/root/.ssh/id.pub:ro dev
 ARG TARGETARCH
-FROM ghcr.io/xhao/container/ubuntu-linux-${TARGETARCH}:latest
+# Pinned to a versioned mirror tag so base drift is an explicit upgrade:
+# bump this tag (and images.txt) together when moving to a new Ubuntu release.
+FROM ghcr.io/xhao/container/ubuntu-linux-${TARGETARCH}:26.04
 
 ARG TARGETARCH
 

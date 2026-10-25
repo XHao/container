@@ -2,6 +2,8 @@
 # '#' lines and blank lines are ignored.
 # Triggered: monthly schedule, push to this file, or manual workflow_dispatch.
 ubuntu:latest
+# versioned pin consumed by dev/Dockerfile (FROM ubuntu-linux-<arch>:26.04)
+ubuntu:26.04
 quay.io/centos/centos:stream9
 alpine:latest
 debian:bookworm-slim

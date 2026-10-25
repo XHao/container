@@ -8,6 +8,8 @@ This project mirrors popular container images to the GitHub Container Registry (
 
 The image list lives in [`images.txt`](images.txt): one image per line, `#` comments and blank lines ignored. Every listed image is synced for both `linux/amd64` and `linux/arm64` (Apple Silicon compatible). Currently: Ubuntu, CentOS Stream, Alpine, and Debian — pure system bases only.
 
+Ubuntu is mirrored twice: `latest` (convenience) and a versioned tag (`26.04`) that downstream builds pin to, so base drift becomes an explicit upgrade instead of a surprise.
+
 ### How to trigger
 
 1. **Monthly schedule** — automatically on the 1st of each month at 00:00 UTC
@@ -28,23 +30,24 @@ ghcr.io/<your-github-username>/container/ubuntu-linux-arm64:latest
 
 ## Dev Image (`dev/`)
 
-A single Dockerfile builds for both architectures (`TARGETARCH` auto-detected) on top of the mirrored Ubuntu image. It ships zsh + powerline-shell, git, Go 1.27.3 (with `GOPROXY=https://goproxy.cn`), OpenJDK 25, Maven, Python 3, and an SSH server.
-
-**No secret material is baked into the image**: there is no root password, and your SSH public key is mounted at runtime instead of being passed as a build arg.
+A personal dev environment built by CI ([`build-dev-image.yml`](.github/workflows/build-dev-image.yml)) and published to GHCR as a multi-arch tag — any machine just pulls it:
 
 ```bash
-# build (arm64 on Apple Silicon; add --platform linux/amd64 for x86)
-docker build -t dev ./dev
+podman pull ghcr.io/xhao/container/dev:latest
 
 # run with your public key mounted
-docker run -d --name dev -p 2222:22 \
+podman run -d --name dev -p 2222:22 \
     -v ~/.ssh/id_ed25519.pub:/root/.ssh/id.pub:ro \
-    dev
+    ghcr.io/xhao/container/dev:latest
 
 ssh -p 2222 root@localhost
 ```
 
-The entrypoint copies the mounted key to `authorized_keys` with the ownership and permissions sshd requires (a direct bind mount would fail `StrictModes` checks), then starts sshd.
+The image builds for both `linux/amd64` and `linux/arm64` on native runners (no QEMU), pinned to the versioned `ubuntu-linux-<arch>:26.04` mirror tag — moving to a new Ubuntu release means bumping that tag in `dev/Dockerfile` plus `images.txt` together. It ships zsh + powerline-shell, git, Go 1.27.3 (with `GOPROXY=https://goproxy.cn`), OpenJDK 25, Maven, Python 3, and an SSH server.
+
+**Triggers**: changes under `dev/`, every successful sync run (so the dev image tracks the pinned base's point releases), or manual dispatch. The very first run after adding the versioned base tag can race ahead of the sync workflow and fail — the post-sync trigger self-heals it.
+
+**No secret material is baked into the image**: there is no root password, and your SSH public key is mounted at runtime instead of being passed as a build arg. The entrypoint copies the mounted key to `authorized_keys` with the ownership and permissions sshd requires (a direct bind mount would fail `StrictModes` checks), then starts sshd. Local iteration still works with `podman build ./dev`.
 
 ## Notes
 
