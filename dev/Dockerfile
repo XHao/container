@@ -75,16 +75,20 @@ RUN pip install --break-system-packages powerline-shell && \
     chsh -s /bin/zsh root
 
 RUN cat >> /root/.zshrc <<'EOF'
-function _update_ps1() { eval "$(powerline-shell $? --shell zsh)" }
+function _update_ps1() {
+    PS1=$(powerline-shell $? --shell zsh)
+}
 if [[ $TERM != linux && -t 1 ]]; then
-  precmd () { _update_ps1 }
+  precmd () { _update_ps1; }
 fi
 EOF
 
 RUN cat >> /root/.bashrc <<'EOF'
-function _update_ps1() { eval "$(powerline-shell $? --shell bash)" }
-if [[ $TERM != linux && ! $PROMPT_COMMAND =~ _update_ps1 ]]; then
-  PROMPT_COMMAND="_update_ps1; $PROMPT_COMMAND"
+function _update_ps1() {
+    PS1="$(powerline-shell $? --shell bash)"
+}
+if [[ $TERM != linux && -t 1 ]]; then
+  PROMPT_COMMAND="_update_ps1${PROMPT_COMMAND:+;$PROMPT_COMMAND}"
 fi
 EOF
 
