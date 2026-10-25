@@ -51,6 +51,7 @@ RUN if [ "$TARGETARCH" = "arm64" ]; then \
         tmux \
         openssh-server \
         git \
+        vim \
         python3 python3-pip \
         openjdk-25-jdk maven && \
     apt-get clean && \
@@ -76,8 +77,25 @@ RUN chsh -s /bin/zsh root
 # Dracula tmux theme from our fork (carries the weather icon fix).
 # Overridable for local builds on networks where github HTTPS is blocked.
 ARG DRACULA_REPO=https://github.com/XHao/tmux.git
-RUN git clone --depth 1 "$DRACULA_REPO" /root/.tmux/dracula && \
+# retry loop: github HTTPS egress is intermittently reset on some networks
+RUN for i in 1 2 3 4 5; do \
+        git clone --depth 1 "$DRACULA_REPO" /root/.tmux/dracula && break; \
+        [ "$i" = 5 ] && exit 1; \
+        echo "clone retry $i"; sleep 5; \
+    done && \
     rm -rf /root/.tmux/dracula/.git
+
+# myvim (vim config, independent repo): make install runs preflight ->
+# optional deps (apt branch) -> ~/.vimrc symlink -> headless vim-plug
+# PlugInstall fetching all plugins from GitHub.
+ARG MYVIM_REPO=https://github.com/XHao/myvim.git
+RUN for i in 1 2 3 4 5; do \
+        git clone --depth 1 "$MYVIM_REPO" /root/.vim && break; \
+        [ "$i" = 5 ] && exit 1; \
+        echo "clone retry $i"; sleep 5; \
+    done && \
+    rm -rf /root/.vim/.git && \
+    make -C /root/.vim install
 
 RUN cat > /root/.tmux.conf <<'EOF'
 # Slim port of ~/dotfiles/.tmux.conf — drops macOS clipboard (pbcopy),
